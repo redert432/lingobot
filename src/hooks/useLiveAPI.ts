@@ -22,6 +22,7 @@ export function useLiveAPI() {
   const stopAudioCapture = useCallback(() => {
     if (processorRef.current) {
       processorRef.current.disconnect();
+      processorRef.current.onaudioprocess = null;
       processorRef.current = null;
     }
     if (mediaStreamRef.current) {
@@ -87,41 +88,13 @@ export function useLiveAPI() {
       mediaStreamRef.current = mediaStream;
 
       const source = audioCtx.createMediaStreamSource(mediaStream);
-      // ScriptProcessor is deprecated but widely supported for simple PCM extraction
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
       const gainNode = audioCtx.createGain();
       gainNode.gain.value = 0; // Prevent loopback
 
-      processor.onaudioprocess = (e) => {
-        const channelData = e.inputBuffer.getChannelData(0);
-        const pcm16 = new Int16Array(channelData.length);
-        for (let i = 0; i < channelData.length; i++) {
-          let s = Math.max(-1, Math.min(1, channelData[i]));
-          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-        }
-        
-        // Quick base64 conversion
-        const buffer = new Uint8Array(pcm16.buffer);
-        let binary = '';
-        for (let i = 0; i < buffer.byteLength; i++) {
-          binary += String.fromCharCode(buffer[i]);
-        }
-        const base64 = btoa(binary);
-
-        sessionPromise.then((session: any) => {
-          session.sendRealtimeInput({
-            audio: { data: base64, mimeType: 'audio/pcm;rate=16000' }
-          });
-        }).catch(() => {});
-      };
-
-      source.connect(processor);
-      processor.connect(gainNode);
-      gainNode.connect(audioCtx.destination); // Needed for processing to trigger
-
-      const sessionPromise = ai.live.connect({
+      const session = await ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
           responseModalities: [Modality.AUDIO],
@@ -138,28 +111,22 @@ export function useLiveAPI() {
             setIsConnecting(false);
           },
           onmessage: async (message: LiveServerMessage) => {
-            if (message.clientContent?.turnComplete) {
-              // the user turn is complete
-            }
-            if (message.clientContent?.modelTurn?.parts) {
-               // model transcribing? wait, transcription might be in `modelTurn` or `serverContent`
-            }
-            
-            // Transcription handlers
             if (message.serverContent?.modelTurn) {
               const parts = message.serverContent.modelTurn.parts;
-              for (const part of parts) {
-                if (part.text) {
-                  setTranscript(prev => {
-                    const newTs = [...prev];
-                    const last = newTs[newTs.length - 1];
-                    if (last && last.role === 'model' && !last.isFinal) {
-                      last.text += part.text;
-                    } else {
-                      newTs.push({ role: 'model', text: part.text as string, isFinal: false });
-                    }
-                    return newTs;
-                  });
+              if (parts) {
+                for (const part of parts) {
+                  if (part.text) {
+                    setTranscript(prev => {
+                      const newTs = [...prev];
+                      const last = newTs[newTs.length - 1];
+                      if (last && last.role === 'model' && !last.isFinal) {
+                        last.text += part.text;
+                      } else {
+                        newTs.push({ role: 'model', text: part.text as string, isFinal: false });
+                      }
+                      return newTs;
+                    });
+                  }
                 }
               }
             }
@@ -227,7 +194,36 @@ export function useLiveAPI() {
         }
       });
       
-      sessionRef.current = await sessionPromise;
+      sessionRef.current = session;
+
+      processor.onaudioprocess = (e) => {
+        if (!sessionRef.current) return;
+        const channelData = e.inputBuffer.getChannelData(0);
+        const pcm16 = new Int16Array(channelData.length);
+        for (let i = 0; i < channelData.length; i++) {
+          let s = Math.max(-1, Math.min(1, channelData[i]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        
+        const buffer = new Uint8Array(pcm16.buffer);
+        let binary = '';
+        for (let i = 0; i < buffer.byteLength; i++) {
+          binary += String.fromCharCode(buffer[i]);
+        }
+        const base64 = btoa(binary);
+
+        try {
+          sessionRef.current.sendRealtimeInput({
+            audio: { data: base64, mimeType: 'audio/pcm;rate=16000' }
+          });
+        } catch (e) {
+          console.error("Error sending input:", e);
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
 
     } catch (err) {
       console.error("Connection failed:", err);
