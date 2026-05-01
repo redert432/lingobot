@@ -58,7 +58,7 @@ export function useLiveAPI() {
     }
   }, [stopAudioCapture, stopPlayback]);
 
-  const connect = useCallback(async (systemInstruction: string) => {
+  const connect = useCallback(async (systemInstruction: string, voiceName: string = "Puck") => {
     if (isConnected || isConnecting) return;
     setIsConnecting(true);
     setError(null);
@@ -120,7 +120,7 @@ export function useLiveAPI() {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName } },
           },
           systemInstruction: systemInstruction,
           // Removed transcription fields entirely...

@@ -6,9 +6,13 @@ import { cn } from './lib/utils';
 
 const SCENARIOS = [
   { id: 'casual', label: 'Casual Chat', description: 'Just chat about your day.' },
+  { id: 'public', label: 'Public Chat', description: 'Mingle and chat in a public setting.' },
   { id: 'coffee', label: 'Coffee Shop', description: 'Practice ordering coffee.' },
+  { id: 'restaurant', label: 'Restaurant', description: 'Ordering food and dining out.' },
   { id: 'airport', label: 'Airport', description: 'Navigating check-in and security.' },
-  { id: 'hotel', label: 'Hotel Booking', description: 'Checking in to a hotel.' }
+  { id: 'directions', label: 'Directions', description: 'Asking for and finding locations.' },
+  { id: 'hotel', label: 'Hotel Booking', description: 'Checking in to a hotel.' },
+  { id: 'interview', label: 'Job Interview', description: 'Professional conversational practice.' }
 ];
 
 const LANGUAGES = [
@@ -35,7 +39,10 @@ const TRANSLATIONS = {
     disconnected: "Disconnected",
     speakFreely: "Speak freely",
     endPractice: "End Practice",
-    audioStreamed: "Audio streamed in real-time"
+    audioStreamed: "Audio streamed in real-time",
+    voiceSettings: "Voice Settings",
+    selectVoice: "Select AI Voice",
+    close: "Close"
   },
   ar: {
     appTitle: "لينجو بوت",
@@ -51,9 +58,14 @@ const TRANSLATIONS = {
     disconnected: "غير متصل",
     speakFreely: "تحدث بحرية",
     endPractice: "إنهاء الممارسة",
-    audioStreamed: "يتم بث الصوت في الوقت الفعلي"
+    audioStreamed: "يتم بث الصوت في الوقت الفعلي",
+    voiceSettings: "إعدادات الصوت",
+    selectVoice: "اختر صوت الذكاء الاصطناعي",
+    close: "إغلاق"
   }
 };
+
+const AVAILABLE_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Zephyr'];
 
 export default function App() {
   const { isConnected, isConnecting, error, connect, disconnect } = useLiveAPI();
@@ -61,9 +73,19 @@ export default function App() {
   const [selectedScenario, setSelectedScenario] = useState(SCENARIOS[0].id);
   const [hasStarted, setHasStarted] = useState(false);
   const [uiLang, setUiLang] = useState<'en' | 'ar'>('en');
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState('Puck');
 
   const t = TRANSLATIONS[uiLang];
   const isRtl = uiLang === 'ar';
+
+  // Update selected voice when language changes (only outside of active session or settings override)
+  useEffect(() => {
+    const lang = LANGUAGES.find(l => l.id === selectedLanguage);
+    if (lang && !hasStarted) {
+      setSelectedVoice(lang.voice);
+    }
+  }, [selectedLanguage, hasStarted]);
 
   const startSession = () => {
     const lang = LANGUAGES.find(l => l.id === selectedLanguage)?.label || 'Spanish';
@@ -80,7 +102,7 @@ export default function App() {
       prompt += " Speak in clear Modern Standard Arabic or a widely understood dialect like Levantine/Egyptian, unless asked otherwise.";
     }
     
-    connect(prompt);
+    connect(prompt, selectedVoice);
     setHasStarted(true);
   };
 
@@ -100,6 +122,15 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4 text-sm font-medium text-[#4a4a40]">
           <button 
+            onClick={() => setShowVoiceSettings(true)}
+            className="flex items-center gap-2 hover:bg-[#e8e4db] px-3 py-1.5 rounded-full transition-colors text-[#a1a194] leading-none disabled:opacity-50"
+            title={t.voiceSettings}
+            disabled={isConnected || isConnecting}
+          >
+            <Settings size={16} />
+            <span className="hidden sm:inline">{t.voiceSettings}</span>
+          </button>
+          <button 
             onClick={() => setUiLang(uiLang === 'en' ? 'ar' : 'en')}
             className="flex items-center gap-2 hover:bg-[#e8e4db] px-3 py-1.5 rounded-full transition-colors text-[#a1a194] leading-none"
             title="Toggle UI Language"
@@ -115,6 +146,58 @@ export default function App() {
       </header>
 
       <main className="flex-1 flex flex-col max-w-4xl w-full mx-auto p-6 md:p-12 relative">
+        <AnimatePresence>
+          {showVoiceSettings && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm"
+              onClick={() => setShowVoiceSettings(false)}
+            >
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-[#fdfbf7] p-8 rounded-3xl border border-[#e8e4db] shadow-xl max-w-sm w-full space-y-6"
+                dir={isRtl ? 'rtl' : 'ltr'}
+              >
+                <div className="text-center">
+                  <h3 className="text-2xl font-serif font-bold text-[#4a4a40] mb-2">{t.voiceSettings}</h3>
+                  <p className="text-sm text-[#a1a194]">{t.selectVoice}</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  {AVAILABLE_VOICES.map(voice => (
+                    <button
+                      key={voice}
+                      onClick={() => setSelectedVoice(voice)}
+                      className={cn(
+                        "px-4 py-3 rounded-xl text-sm font-medium transition-all text-center border shadow-sm",
+                        selectedVoice === voice
+                          ? "bg-[#7d8c72] text-white border-[#7d8c72]" 
+                          : "bg-white text-[#4a4a40] border-[#edeae1] hover:bg-[#f2ede4]"
+                      )}
+                    >
+                      {voice}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowVoiceSettings(false)}
+                    className="w-full bg-[#f2ede4] text-[#4a4a40] py-3 rounded-xl font-medium transition-colors hover:bg-[#e8e4db]"
+                  >
+                    {t.close}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <AnimatePresence mode="wait">
           {!hasStarted ? (
             <motion.div 
@@ -174,16 +257,24 @@ export default function App() {
                       >
                         <div className="text-sm font-bold mb-1">
                           {uiLang === 'ar' && scen.id === 'casual' ? 'محادثة عادية' :
+                           uiLang === 'ar' && scen.id === 'public' ? 'محادثة عامة' :
                            uiLang === 'ar' && scen.id === 'coffee' ? 'مقهى' :
+                           uiLang === 'ar' && scen.id === 'restaurant' ? 'مطعم' :
                            uiLang === 'ar' && scen.id === 'airport' ? 'المطار' :
+                           uiLang === 'ar' && scen.id === 'directions' ? 'الاتجاهات' :
                            uiLang === 'ar' && scen.id === 'hotel' ? 'حجز فندق' :
+                           uiLang === 'ar' && scen.id === 'interview' ? 'مقابلة عمل' :
                            scen.label}
                         </div>
                         <div className="text-xs opacity-80 leading-relaxed text-balance text-[#7d8c72]">
                           {uiLang === 'ar' && scen.id === 'casual' ? 'تحدث فقط عن يومك.' :
+                           uiLang === 'ar' && scen.id === 'public' ? 'الدردشة في بيئة عامة.' :
                            uiLang === 'ar' && scen.id === 'coffee' ? 'تدرب على طلب القهوة.' :
+                           uiLang === 'ar' && scen.id === 'restaurant' ? 'طلب الطعام وتناول العشاء.' :
                            uiLang === 'ar' && scen.id === 'airport' ? 'التنقل في تسجيل الوصول.' :
+                           uiLang === 'ar' && scen.id === 'directions' ? 'السؤال عن المواقع والعثور عليها.' :
                            uiLang === 'ar' && scen.id === 'hotel' ? 'تسجيل الوصول في فندق.' :
+                           uiLang === 'ar' && scen.id === 'interview' ? 'ممارسة محادثة مهنية.' :
                            scen.description}
                         </div>
                       </button>
