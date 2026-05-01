@@ -5,14 +5,54 @@ import { useLiveAPI } from './hooks/useLiveAPI';
 import { cn } from './lib/utils';
 
 const SCENARIOS = [
-  { id: 'casual', label: 'Casual Chat', description: 'Just chat about your day.' },
-  { id: 'public', label: 'Public Chat', description: 'Mingle and chat in a public setting.' },
-  { id: 'coffee', label: 'Coffee Shop', description: 'Practice ordering coffee.' },
-  { id: 'restaurant', label: 'Restaurant', description: 'Ordering food and dining out.' },
-  { id: 'airport', label: 'Airport', description: 'Navigating check-in and security.' },
-  { id: 'directions', label: 'Directions', description: 'Asking for and finding locations.' },
-  { id: 'hotel', label: 'Hotel Booking', description: 'Checking in to a hotel.' },
-  { id: 'interview', label: 'Job Interview', description: 'Professional conversational practice.' }
+  { id: 'casual', label: 'Casual Chat', description: 'Just chat about your day.', roles: null },
+  { id: 'public', label: 'Public Chat', description: 'Mingle and chat in a public setting.', roles: null },
+  { 
+    id: 'coffee', 
+    label: 'Coffee Shop', 
+    description: 'Practice ordering coffee.', 
+    roles: [
+      { id: 'customer', label: 'Customer', aiPrompt: 'You are a barista at a coffee shop. The user is a customer ordering coffee.' },
+      { id: 'barista', label: 'Barista', aiPrompt: 'You are a customer at a coffee shop ordering coffee. The user is the barista.' }
+    ]
+  },
+  { 
+    id: 'restaurant', 
+    label: 'Restaurant', 
+    description: 'Ordering food and dining out.',
+    roles: [
+      { id: 'customer', label: 'Customer', aiPrompt: 'You are a waiter at a restaurant. The user is a customer ordering food.' },
+      { id: 'waiter', label: 'Waiter', aiPrompt: 'You are a customer at a restaurant ordering food. The user is the waiter.' }
+    ]
+  },
+  { 
+    id: 'airport', 
+    label: 'Airport', 
+    description: 'Navigating check-in and security.',
+    roles: [
+      { id: 'passenger', label: 'Passenger', aiPrompt: 'You are an airport agent. The user is a passenger checking in.' },
+      { id: 'agent', label: 'Agent', aiPrompt: 'You are a passenger at the airport checking in. The user is the airport agent.' }
+    ]
+  },
+  { id: 'directions', label: 'Directions', description: 'Asking for and finding locations.', roles: null },
+  { 
+    id: 'hotel', 
+    label: 'Hotel Booking', 
+    description: 'Checking in to a hotel.',
+    roles: [
+      { id: 'guest', label: 'Guest', aiPrompt: 'You are a hotel receptionist. The user is a guest checking in.' },
+      { id: 'receptionist', label: 'Receptionist', aiPrompt: 'You are a guest checking into a hotel. The user is the receptionist.' }
+    ]
+  },
+  { 
+    id: 'interview', 
+    label: 'Job Interview', 
+    description: 'Professional conversational practice.',
+    roles: [
+      { id: 'interviewee', label: 'Interviewee', aiPrompt: 'You are a hiring manager acting as the interviewer. The user is the candidate being interviewed.' },
+      { id: 'interviewer', label: 'Interviewer', aiPrompt: 'You are a job candidate being interviewed. The user is the hiring manager interviewing you.' }
+    ]
+  }
 ];
 
 const LANGUAGES = [
@@ -33,6 +73,7 @@ const TRANSLATIONS = {
     subheading: "Select a language and scenario to start your live audio practice session.",
     targetLanguage: "Target Language",
     practiceScenario: "Practice Scenario",
+    selectRole: "Your Role (Who are you?)",
     startPractice: "Start Practice",
     connecting: "Connecting...",
     listening: "Listening...",
@@ -52,6 +93,7 @@ const TRANSLATIONS = {
     subheading: "اختر لغة وسيناريو لبدء جلسة التدريب الصوتي المباشر.",
     targetLanguage: "اللغة المستهدفة",
     practiceScenario: "سيناريو الممارسة",
+    selectRole: "دورك (من أنت؟)",
     startPractice: "ابدأ الممارسة",
     connecting: "جاري الاتصال...",
     listening: "أستمع...",
@@ -71,6 +113,7 @@ export default function App() {
   const { isConnected, isConnecting, error, connect, disconnect } = useLiveAPI();
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0].id);
   const [selectedScenario, setSelectedScenario] = useState(SCENARIOS[0].id);
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const [uiLang, setUiLang] = useState<'en' | 'ar'>('en');
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
@@ -78,6 +121,17 @@ export default function App() {
 
   const t = TRANSLATIONS[uiLang];
   const isRtl = uiLang === 'ar';
+
+  const currentScenarioObj = SCENARIOS.find(s => s.id === selectedScenario);
+
+  // Update selected role when scenario changes
+  useEffect(() => {
+    if (currentScenarioObj?.roles && currentScenarioObj.roles.length > 0) {
+      setSelectedRole(currentScenarioObj.roles[0].id);
+    } else {
+      setSelectedRole(null);
+    }
+  }, [selectedScenario, currentScenarioObj]);
 
   // Update selected voice when language changes (only outside of active session or settings override)
   useEffect(() => {
@@ -90,10 +144,20 @@ export default function App() {
   const startSession = () => {
     const lang = LANGUAGES.find(l => l.id === selectedLanguage)?.label || 'Spanish';
     const numScen = SCENARIOS.find(s => s.id === selectedScenario)?.description || 'Casual chat';
+    const scenarioObj = SCENARIOS.find(s => s.id === selectedScenario);
+    
+    let rolePrompt = "";
+    if (scenarioObj?.roles && selectedRole) {
+      const roleObj = scenarioObj.roles.find(r => r.id === selectedRole);
+      if (roleObj) {
+        rolePrompt = roleObj.aiPrompt;
+      }
+    }
     
     let prompt = `You are a friendly, native ${lang} language conversational partner. 
     Your goal is to help the user practice their ${lang}. 
     The current scenario is: ${numScen}. 
+    ${rolePrompt ? `\n    ${rolePrompt}` : ''}
     Please speak entirely in ${lang}. Be patient, keep your sentences relatively short and natural, and ask questions to keep the conversation going.
     Do NOT offer translations unless the user explicitly asks for help.
     Use natural spoken idioms.`;
@@ -281,6 +345,37 @@ export default function App() {
                     ))}
                   </div>
                 </div>
+
+                {currentScenarioObj?.roles && (
+                  <div className="space-y-4 pt-2">
+                    <label className="text-[11px] uppercase tracking-widest text-[#a1a194] font-bold mx-1">{t.selectRole}</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {currentScenarioObj.roles.map(role => (
+                        <button
+                          key={role.id}
+                          onClick={() => setSelectedRole(role.id)}
+                          className={cn(
+                            "px-4 py-3 rounded-xl text-sm font-medium transition-all text-center border shadow-sm",
+                            selectedRole === role.id 
+                              ? "bg-[#7d8c72] text-white border-[#7d8c72]" 
+                              : "bg-white text-[#4a4a40] border-[#edeae1] hover:bg-[#f2ede4]"
+                          )}
+                        >
+                          {uiLang === 'ar' && role.id === 'customer' ? 'أنا الزبون' :
+                           uiLang === 'ar' && role.id === 'barista' ? 'أنا الباريستا/النادل' :
+                           uiLang === 'ar' && role.id === 'waiter' ? 'أنا النادل' :
+                           uiLang === 'ar' && role.id === 'passenger' ? 'أنا المسافر' :
+                           uiLang === 'ar' && role.id === 'agent' ? 'أنا الموظف' :
+                           uiLang === 'ar' && role.id === 'guest' ? 'أنا الضيف' :
+                           uiLang === 'ar' && role.id === 'receptionist' ? 'أنا موظف الاستقبال' :
+                           uiLang === 'ar' && role.id === 'interviewee' ? 'أنا المرشح' :
+                           uiLang === 'ar' && role.id === 'interviewer' ? 'أنا مدیر التوظیف' :
+                           role.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {error && (
                   <div className="bg-red-50 text-red-800 p-4 rounded-xl flex gap-3 text-sm border border-red-200 shadow-inner">
