@@ -110,7 +110,7 @@ const TRANSLATIONS = {
 const AVAILABLE_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Zephyr'];
 
 export default function App() {
-  const { isConnected, isConnecting, error, connect, disconnect } = useLiveAPI();
+  const { isConnected, isConnecting, error, connect, disconnect, transcript } = useLiveAPI();
   const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0].id);
   const [selectedScenario, setSelectedScenario] = useState(SCENARIOS[0].id);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
@@ -450,7 +450,25 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="mt-16 flex flex-col items-center gap-6 z-10">
+              {/* Transcript Display */}
+              {transcript && transcript.length > 0 && (
+                <div className="mt-8 overflow-y-auto max-h-40 w-full max-w-xl mx-auto space-y-3 z-10 px-4 scrollbar-thin">
+                  {[...transcript].reverse().map((turn, idx) => (
+                    <div key={idx} className={cn("flex", turn.role === 'model' ? "justify-start" : "justify-end")}>
+                      <div className={cn(
+                        "rounded-2xl px-4 py-2 max-w-[85%] text-sm",
+                        turn.role === 'model' 
+                          ? "bg-white text-[#4a4a40] border border-[#edeae1] rounded-tl-sm shadow-sm"
+                          : "bg-[#7d8c72] text-white rounded-tr-sm shadow-sm"
+                      )}>
+                        {turn.text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className={cn("flex flex-col items-center gap-6 z-10", transcript.length > 0 ? "mt-8" : "mt-16")}>
                 <button
                   onClick={endSession}
                   className="bg-white text-[#ac4a4a] hover:bg-[#faf9f6] px-8 py-4 rounded-xl font-medium transition-all flex items-center gap-3 border border-[#edeae1] shadow-sm"

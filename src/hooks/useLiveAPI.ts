@@ -73,6 +73,7 @@ export function useLiveAPI() {
       const audioCtx = new AudioContext({ sampleRate: PCM_SAMPLE_RATE });
       audioContextRef.current = audioCtx;
       nextPlayTimeRef.current = audioCtx.currentTime;
+      audioCtx.resume();
 
       const mediaStream = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
@@ -90,8 +91,10 @@ export function useLiveAPI() {
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = 0; // Prevent loopback
+
       processor.onaudioprocess = (e) => {
-        if (!sessionRef.current) return;
         const channelData = e.inputBuffer.getChannelData(0);
         const pcm16 = new Int16Array(channelData.length);
         for (let i = 0; i < channelData.length; i++) {
@@ -107,13 +110,16 @@ export function useLiveAPI() {
         }
         const base64 = btoa(binary);
 
-        sessionRef.current.sendRealtimeInput({
-          audio: { data: base64, mimeType: 'audio/pcm;rate=16000' }
-        });
+        sessionPromise.then((session: any) => {
+          session.sendRealtimeInput({
+            audio: { data: base64, mimeType: 'audio/pcm;rate=16000' }
+          });
+        }).catch(() => {});
       };
 
       source.connect(processor);
-      processor.connect(audioCtx.destination); // Needed for processing to trigger
+      processor.connect(gainNode);
+      gainNode.connect(audioCtx.destination); // Needed for processing to trigger
 
       const sessionPromise = ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
@@ -123,7 +129,8 @@ export function useLiveAPI() {
             voiceConfig: { prebuiltVoiceConfig: { voiceName } },
           },
           systemInstruction: systemInstruction,
-          // Removed transcription fields entirely...
+          outputAudioTranscription: {},
+          inputAudioTranscription: {},
         },
         callbacks: {
           onopen: () => {
@@ -131,6 +138,52 @@ export function useLiveAPI() {
             setIsConnecting(false);
           },
           onmessage: async (message: LiveServerMessage) => {
+            if (message.clientContent?.turnComplete) {
+              // the user turn is complete
+            }
+            if (message.clientContent?.modelTurn?.parts) {
+               // model transcribing? wait, transcription might be in `modelTurn` or `serverContent`
+            }
+            
+            // Transcription handlers
+            if (message.serverContent?.modelTurn) {
+              const parts = message.serverContent.modelTurn.parts;
+              for (const part of parts) {
+                if (part.text) {
+                  setTranscript(prev => {
+                    const newTs = [...prev];
+                    const last = newTs[newTs.length - 1];
+                    if (last && last.role === 'model' && !last.isFinal) {
+                      last.text += part.text;
+                    } else {
+                      newTs.push({ role: 'model', text: part.text as string, isFinal: false });
+                    }
+                    return newTs;
+                  });
+                }
+              }
+            }
+
+            if (message.serverContent?.interrupted) {
+               setTranscript(prev => {
+                  const newTs = [...prev];
+                  const last = newTs[newTs.length - 1];
+                  if (last && last.role === 'model') last.isFinal = true;
+                  return newTs;
+               });
+               stopPlayback();
+            }
+
+            if (message.serverContent?.turnComplete) {
+               setTranscript(prev => {
+                  const newTs = [...prev];
+                  const last = newTs[newTs.length - 1];
+                  if (last && last.role === 'model') last.isFinal = true;
+                  return newTs;
+               });
+            }
+
+            // Playback handling
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
               const binaryStr = atob(base64Audio);
@@ -161,10 +214,6 @@ export function useLiveAPI() {
               sourceNode.onended = () => {
                 sourceNodesRef.current = sourceNodesRef.current.filter(n => n !== sourceNode);
               };
-            }
-
-            if (message.serverContent?.interrupted) {
-              stopPlayback();
             }
           },
           onerror: (err) => {
