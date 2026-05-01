@@ -1,0 +1,8 @@
+{
+  "name": "LingoBot AI",
+  "description": "A language learning app featuring a real-time conversational AI partner.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

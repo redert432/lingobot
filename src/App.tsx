@@ -1,0 +1,292 @@
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Mic, MicOff, Settings, Volume2, Globe, AlertCircle, RefreshCcw, Languages } from 'lucide-react';
+import { useLiveAPI } from './hooks/useLiveAPI';
+import { cn } from './lib/utils';
+
+const SCENARIOS = [
+  { id: 'casual', label: 'Casual Chat', description: 'Just chat about your day.' },
+  { id: 'coffee', label: 'Coffee Shop', description: 'Practice ordering coffee.' },
+  { id: 'airport', label: 'Airport', description: 'Navigating check-in and security.' },
+  { id: 'hotel', label: 'Hotel Booking', description: 'Checking in to a hotel.' }
+];
+
+const LANGUAGES = [
+  { id: 'spanish', label: 'Spanish (Spain)', voice: 'Puck' }, 
+  { id: 'french', label: 'French (France)', voice: 'Kore' },
+  { id: 'german', label: 'German (Germany)', voice: 'Zephyr' },
+  { id: 'japanese', label: 'Japanese', voice: 'Charon' },
+  { id: 'english', label: 'English (US)', voice: 'Fenrir' },
+  { id: 'arabic', label: 'Arabic', voice: 'Puck' }
+];
+
+const TRANSLATIONS = {
+  en: {
+    appTitle: "LingoBot AI",
+    statusConnected: "Connected",
+    statusReady: "Ready",
+    heading: "Practice makes perfect",
+    subheading: "Select a language and scenario to start your live audio practice session.",
+    targetLanguage: "Target Language",
+    practiceScenario: "Practice Scenario",
+    startPractice: "Start Practice",
+    connecting: "Connecting...",
+    listening: "Listening...",
+    disconnected: "Disconnected",
+    speakFreely: "Speak freely",
+    endPractice: "End Practice",
+    audioStreamed: "Audio streamed in real-time"
+  },
+  ar: {
+    appTitle: "لينجو بوت",
+    statusConnected: "متصل",
+    statusReady: "مستعد",
+    heading: "الممارسة تصنع الكمال",
+    subheading: "اختر لغة وسيناريو لبدء جلسة التدريب الصوتي المباشر.",
+    targetLanguage: "اللغة المستهدفة",
+    practiceScenario: "سيناريو الممارسة",
+    startPractice: "ابدأ الممارسة",
+    connecting: "جاري الاتصال...",
+    listening: "أستمع...",
+    disconnected: "غير متصل",
+    speakFreely: "تحدث بحرية",
+    endPractice: "إنهاء الممارسة",
+    audioStreamed: "يتم بث الصوت في الوقت الفعلي"
+  }
+};
+
+export default function App() {
+  const { isConnected, isConnecting, error, connect, disconnect } = useLiveAPI();
+  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0].id);
+  const [selectedScenario, setSelectedScenario] = useState(SCENARIOS[0].id);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [uiLang, setUiLang] = useState<'en' | 'ar'>('en');
+
+  const t = TRANSLATIONS[uiLang];
+  const isRtl = uiLang === 'ar';
+
+  const startSession = () => {
+    const lang = LANGUAGES.find(l => l.id === selectedLanguage)?.label || 'Spanish';
+    const numScen = SCENARIOS.find(s => s.id === selectedScenario)?.description || 'Casual chat';
+    
+    let prompt = `You are a friendly, native ${lang} language conversational partner. 
+    Your goal is to help the user practice their ${lang}. 
+    The current scenario is: ${numScen}. 
+    Please speak entirely in ${lang}. Be patient, keep your sentences relatively short and natural, and ask questions to keep the conversation going.
+    Do NOT offer translations unless the user explicitly asks for help.
+    Use natural spoken idioms.`;
+
+    if (lang === 'Arabic') {
+      prompt += " Speak in clear Modern Standard Arabic or a widely understood dialect like Levantine/Egyptian, unless asked otherwise.";
+    }
+    
+    connect(prompt);
+    setHasStarted(true);
+  };
+
+  const endSession = () => {
+    disconnect();
+    setHasStarted(false);
+  };
+
+  return (
+    <div dir={isRtl ? 'rtl' : 'ltr'} className="min-h-screen bg-[#fdfbf7] text-[#4a4a40] flex flex-col font-sans selection:bg-[#7d8c72]/30 transition-all">
+      <header className="px-8 py-4 flex items-center justify-between border-b border-[#e8e4db] bg-white/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-[#7d8c72] rounded-full flex items-center justify-center text-white font-bold">
+            <Globe size={20} />
+          </div>
+          <h1 className="text-2xl font-serif font-semibold tracking-tight text-[#4a4a40]">{t.appTitle}</h1>
+        </div>
+        <div className="flex items-center gap-4 text-sm font-medium text-[#4a4a40]">
+          <button 
+            onClick={() => setUiLang(uiLang === 'en' ? 'ar' : 'en')}
+            className="flex items-center gap-2 hover:bg-[#e8e4db] px-3 py-1.5 rounded-full transition-colors text-[#a1a194] leading-none"
+            title="Toggle UI Language"
+          >
+            <Languages size={16} />
+            {uiLang === 'en' ? 'عربي' : 'English'}
+          </button>
+          <div className="flex items-center gap-2 bg-[#f2ede4] px-4 py-1.5 rounded-full border border-transparent">
+            <div className={cn("w-2 h-2 rounded-full", isConnected ? "bg-[#7d8c72] animate-pulse" : "bg-[#a1a194]")} />
+            {isConnected ? t.statusConnected : t.statusReady}
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 flex flex-col max-w-4xl w-full mx-auto p-6 md:p-12 relative">
+        <AnimatePresence mode="wait">
+          {!hasStarted ? (
+            <motion.div 
+              key="setup"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="flex-1 flex flex-col justify-center items-center max-w-lg mx-auto w-full gap-8"
+            >
+              <div className="text-center space-y-3">
+                <h2 className="text-3xl md:text-4xl font-serif font-bold tracking-tight text-[#4a4a40]">{t.heading}</h2>
+                <p className="text-[#a1a194] text-lg">{t.subheading}</p>
+              </div>
+
+              <div className="w-full space-y-6 bg-[#f9f7f2] p-6 md:p-8 rounded-3xl border border-[#e8e4db] shadow-sm">
+                <div className="space-y-4">
+                  <label className="text-[11px] uppercase tracking-widest text-[#a1a194] font-bold mx-1">{t.targetLanguage}</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {LANGUAGES.map(lang => (
+                      <button
+                        key={lang.id}
+                        onClick={() => setSelectedLanguage(lang.id)}
+                        className={cn(
+                          "px-4 py-3 rounded-xl text-sm font-medium transition-all text-left border shadow-sm",
+                          uiLang === 'ar' && "text-right",
+                          selectedLanguage === lang.id 
+                            ? "bg-[#7d8c72] text-white border-[#7d8c72]" 
+                            : "bg-white text-[#4a4a40] border-[#edeae1] hover:bg-[#f2ede4]"
+                        )}
+                      >
+                        {uiLang === 'ar' && lang.id === 'arabic' ? 'العربية' : 
+                         uiLang === 'ar' && lang.id === 'english' ? 'الإنجليزية' :
+                         uiLang === 'ar' && lang.id === 'spanish' ? 'الإسبانية' :
+                         uiLang === 'ar' && lang.id === 'french' ? 'الفرنسية' :
+                         uiLang === 'ar' && lang.id === 'german' ? 'الألمانية' :
+                         uiLang === 'ar' && lang.id === 'japanese' ? 'اليابانية' :
+                         lang.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-2">
+                  <label className="text-[11px] uppercase tracking-widest text-[#a1a194] font-bold mx-1">{t.practiceScenario}</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {SCENARIOS.map(scen => (
+                      <button
+                        key={scen.id}
+                        onClick={() => setSelectedScenario(scen.id)}
+                        className={cn(
+                          "px-4 py-3 rounded-xl text-left transition-all border shadow-sm",
+                          uiLang === 'ar' && "text-right",
+                          selectedScenario === scen.id 
+                            ? "bg-[#f2ede4] text-[#4a4a40] border-[#d4a373]" 
+                            : "bg-white text-[#4a4a40] border-[#edeae1] hover:bg-[#f2ede4]"
+                        )}
+                      >
+                        <div className="text-sm font-bold mb-1">
+                          {uiLang === 'ar' && scen.id === 'casual' ? 'محادثة عادية' :
+                           uiLang === 'ar' && scen.id === 'coffee' ? 'مقهى' :
+                           uiLang === 'ar' && scen.id === 'airport' ? 'المطار' :
+                           uiLang === 'ar' && scen.id === 'hotel' ? 'حجز فندق' :
+                           scen.label}
+                        </div>
+                        <div className="text-xs opacity-80 leading-relaxed text-balance text-[#7d8c72]">
+                          {uiLang === 'ar' && scen.id === 'casual' ? 'تحدث فقط عن يومك.' :
+                           uiLang === 'ar' && scen.id === 'coffee' ? 'تدرب على طلب القهوة.' :
+                           uiLang === 'ar' && scen.id === 'airport' ? 'التنقل في تسجيل الوصول.' :
+                           uiLang === 'ar' && scen.id === 'hotel' ? 'تسجيل الوصول في فندق.' :
+                           scen.description}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 text-red-800 p-4 rounded-xl flex gap-3 text-sm border border-red-200 shadow-inner">
+                    <AlertCircle className="shrink-0" size={20} />
+                    <p>{error}</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={startSession}
+                  disabled={isConnecting}
+                  className="w-full bg-[#7d8c72] text-white py-4 px-6 rounded-xl font-medium text-lg hover:bg-[#6b7961] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4 shadow-sm"
+                >
+                  {isConnecting ? (
+                    <>
+                      <RefreshCcw className="animate-spin" size={20} />
+                      {t.connecting}
+                    </>
+                  ) : (
+                    <>
+                      {t.startPractice}
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="active"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="flex-1 flex flex-col absolute inset-0 items-center justify-center py-12 bg-[radial-gradient(#f2ede4_2px,transparent_2px)] [background-size:24px_24px] outline-none"
+            >
+              <div className="relative group">
+                <div className={cn(
+                  "absolute -inset-10 rounded-full blur-3xl opacity-20 transition-all duration-1000",
+                  isConnected ? "bg-[#7d8c72] animate-pulse" : "bg-[#e8e4db]"
+                )} />
+                
+                <div className="relative w-64 h-64 md:w-80 md:h-80 rounded-full border-[6px] border-[#f2ede4] bg-white shadow-xl flex flex-col items-center justify-center overflow-hidden">
+                  
+                  {/* Simulated audio visualizer rings */}
+                  {isConnected && (
+                    <>
+                      <motion.div 
+                        animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                        className="absolute inset-4 border-2 border-[#7d8c72]/30 rounded-full"
+                      />
+                      <motion.div 
+                        animate={{ scale: [1, 1.5, 1], opacity: [0.1, 0.3, 0.1] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+                        className="absolute inset-8 border-2 border-[#d4a373]/20 rounded-full"
+                      />
+                    </>
+                  )}
+
+                  <div className="relative z-10 flex flex-col items-center gap-4">
+                    {isConnected ? (
+                       <Volume2 size={48} className="text-[#7d8c72]" />
+                    ) : (
+                       <MicOff size={48} className="text-[#a1a194]" />
+                    )}
+                    <h3 className="text-2xl font-serif font-bold text-[#4a4a40]">
+                      {isConnected ? t.listening : t.disconnected}
+                    </h3>
+                    {isConnected && (
+                      <p className="text-xs text-[#a1a194] font-bold uppercase tracking-widest italic">{t.speakFreely}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-16 flex flex-col items-center gap-6 z-10">
+                <button
+                  onClick={endSession}
+                  className="bg-white text-[#ac4a4a] hover:bg-[#faf9f6] px-8 py-4 rounded-xl font-medium transition-all flex items-center gap-3 border border-[#edeae1] shadow-sm"
+                >
+                  <MicOff size={20} />
+                  {t.endPractice}
+                </button>
+                <div className="text-center text-[#a1a194] text-xs font-medium uppercase tracking-widest max-w-sm text-balance">
+                  {t.audioStreamed}
+                </div>
+              </div>
+
+              {error && (
+                <div className="mt-8 bg-red-50 text-red-800 p-4 rounded-xl flex gap-3 text-sm border border-red-200 shadow-inner max-w-md z-10">
+                  <AlertCircle className="shrink-0" size={20} />
+                  <p>{error}</p>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+    </div>
+  );
+}
