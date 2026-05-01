@@ -65,7 +65,7 @@ export function useLiveAPI() {
     setTranscript([]);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyADk3uqEBFcgnDasUxDB0n68sbqT-JGmXk";
       if (!apiKey) throw new Error("GEMINI_API_KEY is not defined");
 
       const ai = new GoogleGenAI({ apiKey });
@@ -116,7 +116,7 @@ export function useLiveAPI() {
       processor.connect(audioCtx.destination); // Needed for processing to trigger
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
+        model: "gemini-2.0-flash",
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
